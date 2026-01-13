@@ -222,6 +222,29 @@ overview {
 
 You can also set the color per-output [in the output config](./Configuration:-Outputs.md#backdrop-color).
 
+#### `backdrop-blur`
+
+Blur the backdrop behind workspaces in the overview (in logical pixels).
+Set to `0` to disable.
+
+```kdl
+// Add some blur to the overview backdrop.
+overview {
+    backdrop-blur 8
+}
+```
+
+#### `backdrop-blur-quality`
+
+Control how many samples are used for the blur kernel (1–3). Higher values are smoother but more expensive.
+
+```kdl
+// Use a higher quality blur kernel.
+overview {
+    backdrop-blur-quality 3
+}
+```
+
 #### `workspace-shadow`
 
 Control the shadow behind workspaces visible in the overview.

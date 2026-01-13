@@ -149,6 +149,7 @@ use crate::protocols::output_management::OutputManagementManagerState;
 use crate::protocols::screencopy::{Screencopy, ScreencopyBuffer, ScreencopyManagerState};
 use crate::protocols::virtual_pointer::VirtualPointerManagerState;
 use crate::render_helpers::debug::draw_opaque_regions;
+use crate::render_helpers::overview_blur::OverviewBlurRenderElement;
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
@@ -4110,9 +4111,20 @@ impl Niri {
         // Get monitor elements.
         let mon = self.layout.monitor_for_output(output).unwrap();
         let zoom = mon.overview_zoom();
+        let is_overview_open = self.layout.is_overview_open();
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
+
+        let overview_blur = {
+            let config = self.config.borrow();
+            config.overview.backdrop_blur
+        };
+        let overview_blur_quality = {
+            let config = self.config.borrow();
+            config.overview.backdrop_blur_quality
+        };
+        let overview_progress = mon.overview_progress_value().unwrap_or(0.).clamp(0., 1.);
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
@@ -4166,8 +4178,14 @@ impl Niri {
 
             push_popups_from_layer!(Layer::Bottom);
             push_popups_from_layer!(Layer::Background);
+            if !is_overview_open {
+                push_popups_from_layer!(Layer::Background, true);
+            }
             push_normal_from_layer!(Layer::Bottom);
             push_normal_from_layer!(Layer::Background);
+            if !is_overview_open {
+                push_normal_from_layer!(Layer::Background, true);
+            }
 
             // We don't expect more than one workspace when render_above_top_layer().
             if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
@@ -4208,15 +4226,83 @@ impl Niri {
 
                 process!(geo)(ws.render_background());
             }
+
+            if !is_overview_open {
+                push_popups_from_layer!(Layer::Background, true);
+                push_normal_from_layer!(Layer::Background, true);
+            }
         }
 
         mon.render_workspace_shadows(renderer, &mut |elem| push(elem.into()));
 
         // Then the backdrop.
-        push_popups_from_layer!(Layer::Background, true);
-        push_normal_from_layer!(Layer::Background, true);
+        let mut backdrop_blur = None;
+        if overview_progress > 0. && overview_blur > 0. {
+            let mut backdrop_elements = Vec::new();
+            {
+                let gles_renderer = renderer.as_gles_renderer();
+                for for_backdrop in [false, true] {
+                    self.render_layer_popups(
+                        gles_renderer,
+                        target,
+                        &layer_map,
+                        Layer::Background,
+                        for_backdrop,
+                        &mut |elem| backdrop_elements.push(elem),
+                    );
+                    self.render_layer_normal(
+                        gles_renderer,
+                        target,
+                        &layer_map,
+                        Layer::Background,
+                        for_backdrop,
+                        &mut |elem| backdrop_elements.push(elem),
+                    );
+                }
+            }
 
-        push(backdrop);
+            if !backdrop_elements.is_empty() {
+                let blur_radius = (overview_blur * overview_progress * output_scale.x) as f32;
+                let blur_quality = overview_blur_quality.clamp(1., 3.) as f32;
+                match render_to_encompassing_texture(
+                    renderer.as_gles_renderer(),
+                    output_scale,
+                    Transform::Normal,
+                    Fourcc::Abgr8888,
+                    &backdrop_elements,
+                ) {
+                    Ok((texture, _sync, geo)) => {
+                        let area = Rectangle::new(
+                            geo.loc.to_f64().to_logical(output_scale),
+                            geo.size.to_f64().to_logical(output_scale),
+                        );
+                        backdrop_blur = Some(OverviewBlurRenderElement::new(
+                            area,
+                            texture,
+                            blur_radius,
+                            blur_quality,
+                            output_scale.x as f32,
+                            1.,
+                        ));
+                    }
+                    Err(err) => {
+                        warn!("error rendering overview backdrop blur: {err:?}");
+                    }
+                }
+            }
+        }
+
+        let has_backdrop_blur = backdrop_blur.is_some();
+        if let Some(backdrop_blur) = backdrop_blur {
+            push(backdrop_blur.into());
+        } else {
+            push_popups_from_layer!(Layer::Background, true);
+            push_normal_from_layer!(Layer::Background, true);
+        }
+
+        if !has_backdrop_blur && (overview_progress > 0. || mon.are_transitions_ongoing()) {
+            push(backdrop);
+        }
     }
 
     fn layers_in_render_order<'a>(
@@ -6119,6 +6205,7 @@ niri_render_elements! {
         ScreenshotUi = ScreenshotUiRenderElement,
         WindowMruUi = WindowMruUiRenderElement<R>,
         ExitConfirmDialog = ExitConfirmDialogRenderElement,
+        OverviewBlur = OverviewBlurRenderElement,
         Texture = PrimaryGpuTextureRenderElement,
         // Used for the CPU-rendered panels.
         RelocatedMemoryBuffer = RelocateRenderElement<MemoryRenderBufferRenderElement<R>>,
