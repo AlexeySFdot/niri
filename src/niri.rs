@@ -4122,6 +4122,7 @@ impl Niri {
         // Get monitor elements.
         let mon = self.layout.monitor_for_output(output).unwrap();
         let zoom = mon.overview_zoom();
+        let output_rect = Rectangle::from_size(output_size(output));
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
