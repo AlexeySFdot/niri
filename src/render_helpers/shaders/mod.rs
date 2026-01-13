@@ -15,6 +15,7 @@ pub struct Shaders {
     pub clipped_surface: Option<GlesTexProgram>,
     pub resize: Option<ShaderProgram>,
     pub gradient_fade: Option<GlesTexProgram>,
+    pub overview_blur: Option<ShaderProgram>,
     pub custom_resize: RefCell<Option<ShaderProgram>>,
     pub custom_close: RefCell<Option<ShaderProgram>>,
     pub custom_open: RefCell<Option<ShaderProgram>>,
@@ -27,6 +28,7 @@ pub enum ProgramType {
     Resize,
     Close,
     Open,
+    OverviewBlur,
 }
 
 impl Shaders {
@@ -107,12 +109,24 @@ impl Shaders {
             })
             .ok();
 
+        let overview_blur = ShaderProgram::compile(
+            renderer,
+            include_str!("overview_blur.frag"),
+            &[UniformName::new("blur_radius", UniformType::_1f)],
+            &["niri_tex"],
+        )
+        .map_err(|err| {
+            warn!("error compiling overview blur shader: {err:?}");
+        })
+        .ok();
+
         Self {
             border,
             shadow,
             clipped_surface,
             resize,
             gradient_fade,
+            overview_blur,
             custom_resize: RefCell::new(None),
             custom_close: RefCell::new(None),
             custom_open: RefCell::new(None),
@@ -164,6 +178,7 @@ impl Shaders {
                 .or_else(|| self.resize.clone()),
             ProgramType::Close => self.custom_close.borrow().clone(),
             ProgramType::Open => self.custom_open.borrow().clone(),
+            ProgramType::OverviewBlur => self.overview_blur.clone(),
         }
     }
 }

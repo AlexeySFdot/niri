@@ -122,6 +122,7 @@ impl MergeWith<ClipboardPart> for Clipboard {
 pub struct Overview {
     pub zoom: f64,
     pub backdrop_color: Color,
+    pub backdrop_blur: f64,
     pub workspace_shadow: WorkspaceShadow,
 }
 
@@ -130,6 +131,7 @@ impl Default for Overview {
         Self {
             zoom: 0.5,
             backdrop_color: DEFAULT_BACKDROP_COLOR,
+            backdrop_blur: 8.0,
             workspace_shadow: WorkspaceShadow::default(),
         }
     }
@@ -141,13 +143,15 @@ pub struct OverviewPart {
     pub zoom: Option<FloatOrInt<0, 1>>,
     #[knuffel(child)]
     pub backdrop_color: Option<Color>,
+    #[knuffel(child, unwrap(argument))]
+    pub backdrop_blur: Option<FloatOrInt<0, 65535>>,
     #[knuffel(child)]
     pub workspace_shadow: Option<WorkspaceShadowPart>,
 }
 
 impl MergeWith<OverviewPart> for Overview {
     fn merge_with(&mut self, part: &OverviewPart) {
-        merge!((self, part), zoom, workspace_shadow);
+        merge!((self, part), zoom, backdrop_blur, workspace_shadow);
         merge_clone!((self, part), backdrop_color);
     }
 }

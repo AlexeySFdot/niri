@@ -25,6 +25,7 @@ pub mod debug;
 pub mod gradient_fade_texture;
 pub mod memory;
 pub mod offscreen;
+pub mod overview_blur;
 pub mod primary_gpu_texture;
 pub mod render_elements;
 pub mod renderer;
