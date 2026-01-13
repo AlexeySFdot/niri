@@ -240,6 +240,29 @@ overview {
 }
 ```
 
+#### `blur-strength`
+
+Blur strength for the overview background image, in pixels.
+Set this to `0` to disable the blur.
+
+```kdl
+overview {
+    blur-strength 12
+}
+```
+
+#### `blur-passes`
+
+Number of blur passes used for the overview background image.
+Higher values improve quality at the cost of GPU work.
+Set this to `0` to disable the blur.
+
+```kdl
+overview {
+    blur-passes 4
+}
+```
+
 ### `xwayland-satellite`
 
 <sup>Since: 25.08</sup>
