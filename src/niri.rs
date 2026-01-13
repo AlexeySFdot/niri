@@ -4300,7 +4300,7 @@ impl Niri {
             push_normal_from_layer!(Layer::Background, true);
         }
 
-        if overview_progress > 0. || mon.are_transitions_ongoing() {
+        if !has_backdrop_blur && (overview_progress > 0. || mon.are_transitions_ongoing()) {
             push(backdrop);
         }
     }
