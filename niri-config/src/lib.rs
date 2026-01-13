@@ -1662,6 +1662,8 @@ mod tests {
                         a: 0.3137255,
                     },
                 },
+                blur_strength: 0.0,
+                blur_passes: 0,
             },
             environment: Environment(
                 [
