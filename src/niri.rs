@@ -4131,10 +4131,12 @@ impl Niri {
             let config = self.config.borrow();
             (config.overview.blur_strength, config.overview.blur_passes)
         };
-        let overview_blur_active = self.layout.is_overview_active()
+        let overview_active = self.layout.is_overview_active();
+        let overview_blur_active = overview_active
             && has_background_image
             && overview_blur_strength > 0.0
             && overview_blur_passes > 0;
+        let mut overview_blur_rendered = false;
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
@@ -4206,6 +4208,7 @@ impl Niri {
                         overview_blur_passes,
                     ) {
                         push(blurred.into());
+                        overview_blur_rendered = true;
                     } else {
                         push_normal_from_layer!(Layer::Background);
                     }
@@ -4258,6 +4261,7 @@ impl Niri {
                         overview_blur_passes,
                     ) {
                         push(blurred.into());
+                        overview_blur_rendered = true;
                     } else {
                         push_normal_from_layer!(Layer::Background, process!(geo));
                     }
@@ -4277,7 +4281,15 @@ impl Niri {
         push_popups_from_layer!(Layer::Background, true);
         push_normal_from_layer!(Layer::Background, true);
 
-        push(backdrop);
+        let should_push_backdrop = if overview_active && has_background_image {
+            overview_blur_active && !overview_blur_rendered
+        } else {
+            true
+        };
+
+        if should_push_backdrop {
+            push(backdrop);
+        }
     }
 
     fn layers_in_render_order<'a>(
