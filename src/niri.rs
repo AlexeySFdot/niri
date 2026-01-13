@@ -4122,6 +4122,7 @@ impl Niri {
         // Get monitor elements.
         let mon = self.layout.monitor_for_output(output).unwrap();
         let zoom = mon.overview_zoom();
+        let output_rect = Rectangle::from_size(output_size(output));
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
@@ -4278,7 +4279,15 @@ impl Niri {
         push_popups_from_layer!(Layer::Background, true);
         push_normal_from_layer!(Layer::Background, true);
 
-        push(backdrop);
+        let should_push_backdrop = if overview_active && has_background_image {
+            overview_blur_active && !overview_blur_rendered
+        } else {
+            true
+        };
+
+        if should_push_backdrop {
+            push(backdrop);
+        }
     }
 
     fn layers_in_render_order<'a>(
