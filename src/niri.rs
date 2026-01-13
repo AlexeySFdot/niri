@@ -4111,6 +4111,7 @@ impl Niri {
         // Get monitor elements.
         let mon = self.layout.monitor_for_output(output).unwrap();
         let zoom = mon.overview_zoom();
+        let is_overview_open = self.layout.is_overview_open();
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
@@ -4177,8 +4178,14 @@ impl Niri {
 
             push_popups_from_layer!(Layer::Bottom);
             push_popups_from_layer!(Layer::Background);
+            if !is_overview_open {
+                push_popups_from_layer!(Layer::Background, true);
+            }
             push_normal_from_layer!(Layer::Bottom);
             push_normal_from_layer!(Layer::Background);
+            if !is_overview_open {
+                push_normal_from_layer!(Layer::Background, true);
+            }
 
             // We don't expect more than one workspace when render_above_top_layer().
             if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
@@ -4218,6 +4225,11 @@ impl Niri {
                 push_normal_from_layer!(Layer::Background, process!(geo));
 
                 process!(geo)(ws.render_background());
+            }
+
+            if !is_overview_open {
+                push_popups_from_layer!(Layer::Background, true);
+                push_normal_from_layer!(Layer::Background, true);
             }
         }
 
