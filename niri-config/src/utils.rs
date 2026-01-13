@@ -72,6 +72,12 @@ impl MergeWith<Flag> for bool {
     }
 }
 
+impl MergeWith<u32> for u32 {
+    fn merge_with(&mut self, part: &u32) {
+        *self = *part;
+    }
+}
+
 impl<S: knuffel::traits::ErrorSpan, const MIN: i32, const MAX: i32> knuffel::DecodeScalar<S>
     for FloatOrInt<MIN, MAX>
 {
