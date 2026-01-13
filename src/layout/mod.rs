@@ -4915,6 +4915,10 @@ impl<W: LayoutElement> Layout<W> {
     pub fn is_overview_open(&self) -> bool {
         self.overview_open
     }
+
+    pub fn is_overview_active(&self) -> bool {
+        self.overview_open || self.overview_progress.is_some()
+    }
 }
 
 impl<W: LayoutElement> Default for MonitorSet<W> {
