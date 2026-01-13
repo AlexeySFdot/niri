@@ -90,6 +90,18 @@ impl SolidColorRenderElement {
         Self::new(buffer.id.clone(), geo, buffer.commit, color, kind)
     }
 
+    pub fn from_buffer_with_alpha(
+        buffer: &SolidColorBuffer,
+        location: impl Into<Point<f64, Logical>>,
+        alpha: f32,
+        kind: Kind,
+    ) -> Self {
+        let geo = Rectangle::new(location.into(), buffer.size());
+        let [r, g, b, _] = buffer.color.components();
+        let color = Color32F::new(r, g, b, alpha);
+        Self::new(buffer.id.clone(), geo, buffer.commit, color, kind)
+    }
+
     pub fn new(
         id: Id,
         geometry: Rectangle<f64, Logical>,

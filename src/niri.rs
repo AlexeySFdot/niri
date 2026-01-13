@@ -184,7 +184,7 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
 const MAX_OVERVIEW_BLUR_PASSES: u32 = 8;
-const OVERVIEW_WORKSPACE_ALPHA: f32 = 0.95;
+const OVERVIEW_WORKSPACE_ALPHA: f32 = 0.98;
 
 // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
 // second, so with the worst timing the maximum interval between two frame callbacks for a surface

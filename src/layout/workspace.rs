@@ -1678,7 +1678,7 @@ impl<W: LayoutElement> Workspace<W> {
     }
 
     pub fn render_background_with_alpha(&self, alpha: f32) -> SolidColorRenderElement {
-        SolidColorRenderElement::from_buffer(
+        SolidColorRenderElement::from_buffer_with_alpha(
             &self.background_buffer,
             Point::new(0., 0.),
             alpha,
