@@ -4131,7 +4131,8 @@ impl Niri {
             let config = self.config.borrow();
             (config.overview.blur_strength, config.overview.blur_passes)
         };
-        let overview_blur_active = self.layout.is_overview_active()
+        let overview_active = self.layout.is_overview_active();
+        let overview_blur_active = overview_active
             && has_background_image
             && overview_blur_strength > 0.0
             && overview_blur_passes > 0;
@@ -4279,12 +4280,7 @@ impl Niri {
         push_popups_from_layer!(Layer::Background, true);
         push_normal_from_layer!(Layer::Background, true);
 
-        let should_push_backdrop = if overview_active && has_background_image {
-            overview_blur_active && !overview_blur_rendered
-        } else {
-            true
-        };
-
+        let should_push_backdrop = !overview_active || !has_background_image;
         if should_push_backdrop {
             push(backdrop);
         }
