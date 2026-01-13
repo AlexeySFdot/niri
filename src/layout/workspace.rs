@@ -1677,15 +1677,6 @@ impl<W: LayoutElement> Workspace<W> {
         )
     }
 
-    pub fn render_background_with_alpha(&self, alpha: f32) -> SolidColorRenderElement {
-        SolidColorRenderElement::from_buffer(
-            &self.background_buffer,
-            Point::new(0., 0.),
-            alpha,
-            Kind::Unspecified,
-        )
-    }
-
     pub fn render_above_top_layer(&self) -> bool {
         self.scrolling.render_above_top_layer()
     }

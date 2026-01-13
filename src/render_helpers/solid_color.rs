@@ -113,6 +113,12 @@ impl SolidColorRenderElement {
     pub fn geo(&self) -> Rectangle<f64, Logical> {
         self.geometry
     }
+
+    pub fn with_alpha(mut self, alpha: f32) -> Self {
+        let [r, g, b, _] = self.color.components();
+        self.color = Color32F::new(r, g, b, alpha);
+        self
+    }
 }
 
 impl Element for SolidColorRenderElement {
