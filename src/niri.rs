@@ -31,7 +31,7 @@ use smithay::backend::renderer::element::{
     default_primary_scanout_output_compare, Element, Id, Kind, PrimaryScanoutOutput,
     RenderElementStates,
 };
-use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::gles::{GlesRenderer, Uniform};
 use smithay::backend::renderer::sync::SyncPoint;
 use smithay::backend::renderer::Color32F;
 use smithay::desktop::utils::{
@@ -149,8 +149,11 @@ use crate::protocols::output_management::OutputManagementManagerState;
 use crate::protocols::screencopy::{Screencopy, ScreencopyBuffer, ScreencopyManagerState};
 use crate::protocols::virtual_pointer::VirtualPointerManagerState;
 use crate::render_helpers::debug::draw_opaque_regions;
+use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenRenderElement};
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
 use crate::render_helpers::renderer::NiriRenderer;
+use crate::render_helpers::shader_element::ShaderRenderElement;
+use crate::render_helpers::shaders::{ProgramType, Shaders};
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::surface::push_elements_from_surface_tree;
 use crate::render_helpers::texture::TextureBuffer;
@@ -180,6 +183,7 @@ use crate::window::mapped::MappedId;
 use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped, WindowRef};
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
+const MAX_OVERVIEW_BLUR_PASSES: u32 = 8;
 
 // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
 // second, so with the worst timing the maximum interval between two frame callbacks for a surface
@@ -471,12 +475,19 @@ pub struct OutputState {
     /// Solid color buffer for the backdrop that we use instead of clearing to avoid damage
     /// tracking issues and make screenshots easier.
     pub backdrop_buffer: SolidColorBuffer,
+    pub overview_blur_buffers: OverviewBlurBuffers,
     pub lock_render_state: LockRenderState,
     pub lock_surface: Option<LockSurface>,
     pub lock_color_buffer: SolidColorBuffer,
     screen_transition: Option<ScreenTransition>,
     /// Damage tracker used for the debug damage visualization.
     pub debug_damage_tracker: OutputDamageTracker,
+}
+
+#[derive(Default)]
+pub struct OverviewBlurBuffers {
+    primary: OffscreenBuffer,
+    secondary: OffscreenBuffer,
 }
 
 #[derive(Debug, Default)]
@@ -2764,6 +2775,7 @@ impl Niri {
             vblank_throttle: VBlankThrottle::new(self.event_loop.clone(), name.connector.clone()),
             frame_callback_sequence: 0,
             backdrop_buffer: SolidColorBuffer::new(size, backdrop_color),
+            overview_blur_buffers: OverviewBlurBuffers::default(),
             lock_render_state,
             lock_surface: None,
             lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
@@ -4113,6 +4125,15 @@ impl Niri {
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
+        let has_background_image = self.has_background_image(&layer_map);
+        let (overview_blur_strength, overview_blur_passes) = {
+            let config = self.config.borrow();
+            (config.overview.blur_strength, config.overview.blur_passes)
+        };
+        let overview_blur_active = self.layout.is_overview_active()
+            && has_background_image
+            && overview_blur_strength > 0.0
+            && overview_blur_passes > 0;
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
@@ -4167,11 +4188,32 @@ impl Niri {
             push_popups_from_layer!(Layer::Bottom);
             push_popups_from_layer!(Layer::Background);
             push_normal_from_layer!(Layer::Bottom);
-            push_normal_from_layer!(Layer::Background);
+            if !overview_blur_active {
+                push_normal_from_layer!(Layer::Background);
+            }
 
-            // We don't expect more than one workspace when render_above_top_layer().
-            if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
-                push(ws.render_background().into());
+            if let Some((ws, geo)) = mon.workspaces_with_render_geo().next() {
+                if overview_blur_active {
+                    if let Some(blurred) = self.render_overview_blur(
+                        renderer,
+                        output,
+                        target,
+                        &layer_map,
+                        output_scale,
+                        zoom,
+                        geo,
+                        overview_blur_strength,
+                        overview_blur_passes,
+                    ) {
+                        push(blurred.into());
+                    } else {
+                        push_normal_from_layer!(Layer::Background);
+                    }
+                }
+
+                if !has_background_image {
+                    push(ws.render_background().into());
+                }
             }
         } else {
             push_popups_from_layer!(Layer::Top);
@@ -4204,9 +4246,29 @@ impl Niri {
 
             for (ws, geo) in mon.workspaces_with_render_geo() {
                 push_normal_from_layer!(Layer::Bottom, process!(geo));
-                push_normal_from_layer!(Layer::Background, process!(geo));
+                if overview_blur_active {
+                    if let Some(blurred) = self.render_overview_blur(
+                        renderer,
+                        output,
+                        target,
+                        &layer_map,
+                        output_scale,
+                        zoom,
+                        geo,
+                        overview_blur_strength,
+                        overview_blur_passes,
+                    ) {
+                        push(blurred.into());
+                    } else {
+                        push_normal_from_layer!(Layer::Background, process!(geo));
+                    }
+                } else {
+                    push_normal_from_layer!(Layer::Background, process!(geo));
+                }
 
-                process!(geo)(ws.render_background());
+                if !has_background_image {
+                    process!(geo)(ws.render_background());
+                }
             }
         }
 
@@ -4264,6 +4326,134 @@ impl Niri {
         for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
             mapped.render_popups(renderer, geo.loc.to_f64(), target, push);
         }
+    }
+
+    fn has_background_image(&self, layer_map: &LayerMap) -> bool {
+        layer_map
+            .layers_on(Layer::Background)
+            .any(|surface| self.mapped_layer_surfaces.contains_key(surface))
+    }
+
+    fn render_overview_blur<R: NiriRenderer>(
+        &self,
+        renderer: &mut R,
+        output: &Output,
+        target: RenderTarget,
+        layer_map: &LayerMap,
+        output_scale: Scale<f64>,
+        zoom: f64,
+        ws_geo: Rectangle<f64, Logical>,
+        blur_strength: f64,
+        blur_passes: u32,
+    ) -> Option<OffscreenRenderElement> {
+        let passes = blur_passes.min(MAX_OVERVIEW_BLUR_PASSES);
+        if passes == 0 || blur_strength <= 0.0 {
+            return None;
+        }
+
+        let gles_renderer = renderer.as_gles_renderer();
+        if Shaders::get(gles_renderer)
+            .program(ProgramType::OverviewBlur)
+            .is_none()
+        {
+            return None;
+        }
+
+        let mut elements: Vec<OutputRenderElements<GlesRenderer>> = Vec::new();
+        self.render_layer_normal(
+            gles_renderer,
+            target,
+            layer_map,
+            Layer::Background,
+            false,
+            &mut |elem| {
+                if let Some(elem) = scale_relocate_crop(elem, output_scale, zoom, ws_geo) {
+                    elements.push(elem.into());
+                }
+            },
+        );
+
+        if elements.is_empty() {
+            return None;
+        }
+
+        let state = self.output_state.get(output)?;
+        let buffers = &state.overview_blur_buffers;
+
+        let (base, _sync, _data) = match buffers
+            .primary
+            .render(gles_renderer, output_scale, &elements)
+        {
+            Ok(result) => result,
+            Err(err) => {
+                warn!("error rendering overview blur base: {err:?}");
+                return None;
+            }
+        };
+
+        let horizontal = match Self::render_overview_blur_pass(
+            gles_renderer,
+            &buffers.secondary,
+            &base,
+            output_scale,
+            [1.0, 0.0],
+            blur_strength as f32,
+            passes as f32,
+        ) {
+            Ok(elem) => elem,
+            Err(err) => {
+                warn!("error rendering overview blur horizontal pass: {err:?}");
+                return None;
+            }
+        };
+
+        match Self::render_overview_blur_pass(
+            gles_renderer,
+            &buffers.primary,
+            &horizontal,
+            output_scale,
+            [0.0, 1.0],
+            blur_strength as f32,
+            passes as f32,
+        ) {
+            Ok(elem) => Some(elem),
+            Err(err) => {
+                warn!("error rendering overview blur vertical pass: {err:?}");
+                None
+            }
+        }
+    }
+
+    fn render_overview_blur_pass(
+        renderer: &mut GlesRenderer,
+        buffer: &OffscreenBuffer,
+        input: &OffscreenRenderElement,
+        output_scale: Scale<f64>,
+        direction: [f32; 2],
+        radius: f32,
+        passes: f32,
+    ) -> anyhow::Result<OffscreenRenderElement> {
+        let area = Rectangle::new(input.offset(), input.logical_size());
+        let elem = ShaderRenderElement::new(
+            ProgramType::OverviewBlur,
+            area.size,
+            None,
+            output_scale.x as f32,
+            1.0,
+            Rc::new([
+                Uniform::new("niri_direction", direction),
+                Uniform::new("niri_radius", radius),
+                Uniform::new("niri_passes", passes),
+            ]),
+            HashMap::from([(String::from("niri_tex"), input.texture().clone())]),
+            Kind::Unspecified,
+        )
+        .with_location(area.loc);
+
+        let (elem, _sync, _data) = buffer
+            .render(renderer, output_scale, &[elem])
+            .context("error rendering overview blur pass")?;
+        Ok(elem)
     }
 
     fn redraw(&mut self, backend: &mut Backend, output: &Output) {
@@ -6120,6 +6310,7 @@ niri_render_elements! {
         WindowMruUi = WindowMruUiRenderElement<R>,
         ExitConfirmDialog = ExitConfirmDialogRenderElement,
         Texture = PrimaryGpuTextureRenderElement,
+        Offscreen = OffscreenRenderElement,
         // Used for the CPU-rendered panels.
         RelocatedMemoryBuffer = RelocateRenderElement<MemoryRenderBufferRenderElement<R>>,
     }
