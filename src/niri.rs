@@ -4131,12 +4131,10 @@ impl Niri {
             let config = self.config.borrow();
             (config.overview.blur_strength, config.overview.blur_passes)
         };
-        let overview_active = self.layout.is_overview_active();
-        let overview_blur_active = overview_active
+        let overview_blur_active = self.layout.is_overview_active()
             && has_background_image
             && overview_blur_strength > 0.0
             && overview_blur_passes > 0;
-        let mut overview_blur_rendered = false;
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
@@ -4195,7 +4193,7 @@ impl Niri {
                 push_normal_from_layer!(Layer::Background);
             }
 
-            if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
+            if let Some((ws, geo)) = mon.workspaces_with_render_geo().next() {
                 if overview_blur_active {
                     if let Some(blurred) = self.render_overview_blur(
                         renderer,
@@ -4203,12 +4201,12 @@ impl Niri {
                         target,
                         &layer_map,
                         output_scale,
-                        output_rect,
+                        zoom,
+                        geo,
                         overview_blur_strength,
                         overview_blur_passes,
                     ) {
                         push(blurred.into());
-                        overview_blur_rendered = true;
                     } else {
                         push_normal_from_layer!(Layer::Background);
                     }
@@ -4256,12 +4254,12 @@ impl Niri {
                         target,
                         &layer_map,
                         output_scale,
-                        output_rect,
+                        zoom,
+                        geo,
                         overview_blur_strength,
                         overview_blur_passes,
                     ) {
                         push(blurred.into());
-                        overview_blur_rendered = true;
                     } else {
                         push_normal_from_layer!(Layer::Background, process!(geo));
                     }
@@ -4352,7 +4350,8 @@ impl Niri {
         target: RenderTarget,
         layer_map: &LayerMap,
         output_scale: Scale<f64>,
-        output_geo: Rectangle<f64, Logical>,
+        zoom: f64,
+        ws_geo: Rectangle<f64, Logical>,
         blur_strength: f64,
         blur_passes: u32,
     ) -> Option<OffscreenRenderElement> {
@@ -4369,8 +4368,11 @@ impl Niri {
             return None;
         }
 
-        let mut elements: Vec<OutputRenderElements<GlesRenderer>> = Vec::new();
-        let output_geo = output_geo.to_physical_precise_round(output_scale);
+        let mut elements: Vec<
+            CropRenderElement<RelocateRenderElement<RescaleRenderElement<
+                LayerSurfaceRenderElement<GlesRenderer>,
+            >>>,
+        > = Vec::new();
         self.render_layer_normal(
             gles_renderer,
             target,
@@ -4378,9 +4380,8 @@ impl Niri {
             Layer::Background,
             false,
             &mut |elem| {
-                if let Some(elem) = CropRenderElement::from_element(elem, output_scale, output_geo)
-                {
-                    elements.push(elem.into());
+                if let Some(elem) = scale_relocate_crop(elem, output_scale, zoom, ws_geo) {
+                    elements.push(elem);
                 }
             },
         );
