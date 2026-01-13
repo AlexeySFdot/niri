@@ -63,6 +63,13 @@ overview {
 }
 ```
 
+```kdl
+// Add some blur to the overview backdrop.
+overview {
+    backdrop-blur 8
+}
+```
+
 You can also disable the hot corner:
 
 ```kdl
