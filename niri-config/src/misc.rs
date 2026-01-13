@@ -123,6 +123,8 @@ pub struct Overview {
     pub zoom: f64,
     pub backdrop_color: Color,
     pub workspace_shadow: WorkspaceShadow,
+    pub blur_strength: f64,
+    pub blur_passes: u32,
 }
 
 impl Default for Overview {
@@ -131,6 +133,8 @@ impl Default for Overview {
             zoom: 0.5,
             backdrop_color: DEFAULT_BACKDROP_COLOR,
             workspace_shadow: WorkspaceShadow::default(),
+            blur_strength: 0.0,
+            blur_passes: 0,
         }
     }
 }
@@ -143,11 +147,15 @@ pub struct OverviewPart {
     pub backdrop_color: Option<Color>,
     #[knuffel(child)]
     pub workspace_shadow: Option<WorkspaceShadowPart>,
+    #[knuffel(child, unwrap(argument))]
+    pub blur_strength: Option<FloatOrInt<0, 1024>>,
+    #[knuffel(child, unwrap(argument))]
+    pub blur_passes: Option<u32>,
 }
 
 impl MergeWith<OverviewPart> for Overview {
     fn merge_with(&mut self, part: &OverviewPart) {
-        merge!((self, part), zoom, workspace_shadow);
+        merge!((self, part), zoom, workspace_shadow, blur_strength, blur_passes);
         merge_clone!((self, part), backdrop_color);
     }
 }
