@@ -154,14 +154,9 @@ pub struct OverviewPart {
 }
 
 impl MergeWith<OverviewPart> for Overview {
+    #[rustfmt::skip]
     fn merge_with(&mut self, part: &OverviewPart) {
-        merge!(
-            (self, part),
-            zoom,
-            backdrop_blur,
-            backdrop_blur_quality,
-            workspace_shadow
-        );
+        merge!((self, part), zoom, backdrop_blur, backdrop_blur_quality, workspace_shadow);
         merge_clone!((self, part), backdrop_color);
     }
 }

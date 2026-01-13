@@ -4292,6 +4292,7 @@ impl Niri {
             }
         }
 
+        let has_backdrop_blur = backdrop_blur.is_some();
         if let Some(backdrop_blur) = backdrop_blur {
             push(backdrop_blur.into());
         } else {
@@ -4299,7 +4300,9 @@ impl Niri {
             push_normal_from_layer!(Layer::Background, true);
         }
 
-        push(backdrop);
+        if !has_backdrop_blur && (overview_progress > 0. || mon.are_transitions_ongoing()) {
+            push(backdrop);
+        }
     }
 
     fn layers_in_render_order<'a>(
