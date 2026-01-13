@@ -112,7 +112,10 @@ impl Shaders {
         let overview_blur = ShaderProgram::compile(
             renderer,
             include_str!("overview_blur.frag"),
-            &[UniformName::new("blur_radius", UniformType::_1f)],
+            &[
+                UniformName::new("blur_radius", UniformType::_1f),
+                UniformName::new("blur_quality", UniformType::_1f),
+            ],
             &["niri_tex"],
         )
         .map_err(|err| {

@@ -19,6 +19,7 @@ impl OverviewBlurRenderElement {
         area: Rectangle<f64, Logical>,
         texture: GlesTexture,
         blur_radius: f32,
+        blur_quality: f32,
         scale: f32,
         alpha: f32,
     ) -> Self {
@@ -29,7 +30,10 @@ impl OverviewBlurRenderElement {
                 None,
                 scale,
                 alpha,
-                Rc::new([Uniform::new("blur_radius", blur_radius)]),
+                Rc::new([
+                    Uniform::new("blur_radius", blur_radius),
+                    Uniform::new("blur_quality", blur_quality),
+                ]),
                 HashMap::from([(String::from("niri_tex"), texture)]),
                 Kind::Unspecified,
             )

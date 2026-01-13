@@ -234,6 +234,17 @@ overview {
 }
 ```
 
+#### `backdrop-blur-quality`
+
+Control how many samples are used for the blur kernel (1–3). Higher values are smoother but more expensive.
+
+```kdl
+// Use a higher quality blur kernel.
+overview {
+    backdrop-blur-quality 3
+}
+```
+
 #### `workspace-shadow`
 
 Control the shadow behind workspaces visible in the overview.

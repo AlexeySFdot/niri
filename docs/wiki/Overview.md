@@ -70,6 +70,13 @@ overview {
 }
 ```
 
+```kdl
+// Increase blur quality for the overview backdrop.
+overview {
+    backdrop-blur-quality 3
+}
+```
+
 You can also disable the hot corner:
 
 ```kdl

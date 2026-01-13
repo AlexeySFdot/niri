@@ -4119,6 +4119,10 @@ impl Niri {
             let config = self.config.borrow();
             config.overview.backdrop_blur
         };
+        let overview_blur_quality = {
+            let config = self.config.borrow();
+            config.overview.backdrop_blur_quality
+        };
         let overview_progress = mon.overview_progress_value().unwrap_or(0.).clamp(0., 1.);
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
@@ -4225,26 +4229,29 @@ impl Niri {
             let mut backdrop_elements = Vec::new();
             {
                 let gles_renderer = renderer.as_gles_renderer();
-                self.render_layer_popups(
-                    gles_renderer,
-                    target,
-                    &layer_map,
-                    Layer::Background,
-                    true,
-                    &mut |elem| backdrop_elements.push(elem),
-                );
-                self.render_layer_normal(
-                    gles_renderer,
-                    target,
-                    &layer_map,
-                    Layer::Background,
-                    true,
-                    &mut |elem| backdrop_elements.push(elem),
-                );
+                for for_backdrop in [false, true] {
+                    self.render_layer_popups(
+                        gles_renderer,
+                        target,
+                        &layer_map,
+                        Layer::Background,
+                        for_backdrop,
+                        &mut |elem| backdrop_elements.push(elem),
+                    );
+                    self.render_layer_normal(
+                        gles_renderer,
+                        target,
+                        &layer_map,
+                        Layer::Background,
+                        for_backdrop,
+                        &mut |elem| backdrop_elements.push(elem),
+                    );
+                }
             }
 
             if !backdrop_elements.is_empty() {
                 let blur_radius = (overview_blur * overview_progress * output_scale.x) as f32;
+                let blur_quality = overview_blur_quality.clamp(1., 3.) as f32;
                 match render_to_encompassing_texture(
                     renderer.as_gles_renderer(),
                     output_scale,
@@ -4261,6 +4268,7 @@ impl Niri {
                             area,
                             texture,
                             blur_radius,
+                            blur_quality,
                             output_scale.x as f32,
                             1.,
                         ));

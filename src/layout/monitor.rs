@@ -1390,7 +1390,6 @@ impl<W: LayoutElement> Monitor<W> {
         }
     }
 
-
     pub fn overview_progress_value(&self) -> Option<f64> {
         self.overview_progress.as_ref().map(|p| p.value())
     }

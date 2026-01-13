@@ -1644,6 +1644,7 @@ mod tests {
                     a: 1.0,
                 },
                 backdrop_blur: 8.0,
+                backdrop_blur_quality: 2.0,
                 workspace_shadow: WorkspaceShadow {
                     off: false,
                     offset: ShadowOffset {
