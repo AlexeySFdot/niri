@@ -4122,6 +4122,7 @@ impl Niri {
         // Get monitor elements.
         let mon = self.layout.monitor_for_output(output).unwrap();
         let zoom = mon.overview_zoom();
+        let output_rect = Rectangle::from_size(output_size(output));
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
@@ -4192,7 +4193,7 @@ impl Niri {
                 push_normal_from_layer!(Layer::Background);
             }
 
-            if let Some((ws, geo)) = mon.workspaces_with_render_geo().next() {
+            if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
                 if overview_blur_active {
                     if let Some(blurred) = self.render_overview_blur(
                         renderer,
@@ -4200,8 +4201,7 @@ impl Niri {
                         target,
                         &layer_map,
                         output_scale,
-                        zoom,
-                        geo,
+                        output_rect,
                         overview_blur_strength,
                         overview_blur_passes,
                     ) {
@@ -4253,8 +4253,7 @@ impl Niri {
                         target,
                         &layer_map,
                         output_scale,
-                        zoom,
-                        geo,
+                        output_rect,
                         overview_blur_strength,
                         overview_blur_passes,
                     ) {
@@ -4341,8 +4340,7 @@ impl Niri {
         target: RenderTarget,
         layer_map: &LayerMap,
         output_scale: Scale<f64>,
-        zoom: f64,
-        ws_geo: Rectangle<f64, Logical>,
+        output_geo: Rectangle<f64, Logical>,
         blur_strength: f64,
         blur_passes: u32,
     ) -> Option<OffscreenRenderElement> {
@@ -4360,6 +4358,7 @@ impl Niri {
         }
 
         let mut elements: Vec<OutputRenderElements<GlesRenderer>> = Vec::new();
+        let output_geo = output_geo.to_physical_precise_round(output_scale);
         self.render_layer_normal(
             gles_renderer,
             target,
@@ -4367,7 +4366,8 @@ impl Niri {
             Layer::Background,
             false,
             &mut |elem| {
-                if let Some(elem) = scale_relocate_crop(elem, output_scale, zoom, ws_geo) {
+                if let Some(elem) = CropRenderElement::from_element(elem, output_scale, output_geo)
+                {
                     elements.push(elem.into());
                 }
             },
