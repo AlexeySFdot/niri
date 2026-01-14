@@ -13,6 +13,7 @@ use std::{env, mem, thread};
 use _server_decoration::server::org_kde_kwin_server_decoration_manager::Mode as KdeDecorationsMode;
 use anyhow::{bail, ensure, Context};
 use calloop::futures::Scheduler;
+use niri_config::appearance::DEFAULT_BACKGROUND_COLOR;
 use niri_config::debug::PreviewRender;
 use niri_config::{
     Config, FloatOrInt, Key, Modifiers, OutputName, TrackLayout, WarpMouseToFocusMode,
@@ -4083,6 +4084,7 @@ impl Niri {
         let layer_map = layer_map_for_output(output);
 
         let mut skip_fullscreen_background = false;
+        let mut overview_background_fallback = None;
         let backdrop = if zoom < 1.0 {
             let backdrop = self.render_backdrop_image(
                 renderer,
@@ -4092,10 +4094,8 @@ impl Niri {
                 output_scale,
             );
             if backdrop.is_some() {
-                let has_workspace_background = mon
-                    .workspaces_with_render_geo()
-                    .any(|(ws, _)| ws.render_background().color().components()[3] > 0.);
-                skip_fullscreen_background = has_workspace_background;
+                skip_fullscreen_background = true;
+                overview_background_fallback = Some(Color32F::from(DEFAULT_BACKGROUND_COLOR));
             }
             backdrop.map(OutputRenderElements::from)
         } else {
@@ -4217,7 +4217,17 @@ impl Niri {
 
             // We don't expect more than one workspace when render_above_top_layer().
             if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
-                push(ws.render_background().into());
+                let background = if let Some(fallback) = overview_background_fallback {
+                    let elem = ws.render_background();
+                    if elem.color().components()[3] == 0. {
+                        ws.render_background_with_color(fallback)
+                    } else {
+                        elem
+                    }
+                } else {
+                    ws.render_background()
+                };
+                push(background.into());
             }
         } else {
             push_popups_from_layer!(Layer::Top);
@@ -4260,7 +4270,17 @@ impl Niri {
                     process!(geo)
                 );
 
-                process!(geo)(ws.render_background());
+                let background = if let Some(fallback) = overview_background_fallback {
+                    let elem = ws.render_background();
+                    if elem.color().components()[3] == 0. {
+                        ws.render_background_with_color(fallback)
+                    } else {
+                        elem
+                    }
+                } else {
+                    ws.render_background()
+                };
+                process!(geo)(background);
             }
         }
 
