@@ -76,6 +76,22 @@ impl SolidColorBuffer {
     pub fn size(&self) -> Size<f64, Logical> {
         self.size
     }
+
+    pub fn render_element_opaque(
+        &self,
+        location: impl Into<Point<f64, Logical>>,
+        kind: Kind,
+    ) -> SolidColorRenderElement {
+        let [r, g, b, a] = self.color.components();
+        let (r, g, b) = if a > 0. {
+            ((r / a).clamp(0., 1.), (g / a).clamp(0., 1.), (b / a).clamp(0., 1.))
+        } else {
+            (0., 0., 0.)
+        };
+        let color = Color32F::from([r, g, b, 1.]);
+        let geo = Rectangle::new(location.into(), self.size);
+        SolidColorRenderElement::new(self.id.clone(), geo, self.commit, color, kind)
+    }
 }
 
 impl SolidColorRenderElement {

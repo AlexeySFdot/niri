@@ -1677,6 +1677,11 @@ impl<W: LayoutElement> Workspace<W> {
         )
     }
 
+    pub fn render_background_opaque(&self) -> SolidColorRenderElement {
+        self.background_buffer
+            .render_element_opaque(Point::new(0., 0.), Kind::Unspecified)
+    }
+
     pub fn render_background_with_alpha(&self, alpha: f32) -> SolidColorRenderElement {
         SolidColorRenderElement::from_buffer(
             &self.background_buffer,
