@@ -152,7 +152,7 @@ use crate::protocols::virtual_pointer::VirtualPointerManagerState;
 use crate::render_helpers::debug::draw_opaque_regions;
 use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenRenderElement};
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
-use crate::render_helpers::renderer::NiriRenderer;
+use crate::render_helpers::renderer::{AsGlesRenderer, NiriRenderer};
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::surface::push_elements_from_surface_tree;
 use crate::render_helpers::texture::TextureBuffer;
@@ -4364,12 +4364,16 @@ impl Niri {
         layer_map: &'a LayerMap,
         layer: Layer,
         for_backdrop: bool,
+        wallpaper_in_backdrop: bool,
     ) -> impl Iterator<Item = (&'a MappedLayer, Rectangle<i32, Logical>)> {
         // LayerMap returns layers in reverse stacking order.
         layer_map.layers_on(layer).rev().filter_map(move |surface| {
             let mapped = self.mapped_layer_surfaces.get(surface)?;
 
-            if for_backdrop != mapped.place_within_backdrop() {
+            let place_within_backdrop = mapped.place_within_backdrop()
+                || (wallpaper_in_backdrop && mapped.is_backdrop_wallpaper_candidate());
+
+            if for_backdrop != place_within_backdrop {
                 return None;
             }
 
@@ -4412,6 +4416,14 @@ impl Niri {
             }
             mapped.render_popups(renderer, geo.loc.to_f64(), target, push);
         }
+    }
+
+    fn should_place_wallpaper_in_backdrop(&self, layer_map: &LayerMap) -> bool {
+        layer_map.layers_on(Layer::Background).any(|surface| {
+            self.mapped_layer_surfaces
+                .get(surface)
+                .is_some_and(MappedLayer::is_backdrop_wallpaper_candidate)
+        })
     }
 
     fn redraw(&mut self, backend: &mut Backend, output: &Output) {
