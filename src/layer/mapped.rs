@@ -128,7 +128,11 @@ impl MappedLayer {
         true
     }
 
-    pub fn is_backdrop_wallpaper_candidate(&self) -> bool {
+    pub fn place_within_backdrop(&self) -> bool {
+        if !self.rules.place_within_backdrop {
+            return false;
+        }
+
         if self.surface.layer() != Layer::Background {
             return false;
         }
@@ -139,14 +143,6 @@ impl MappedLayer {
         }
 
         true
-    }
-
-    pub fn place_within_backdrop(&self) -> bool {
-        if !self.rules.place_within_backdrop {
-            return false;
-        }
-
-        self.is_backdrop_wallpaper_candidate()
     }
 
     pub fn bob_offset(&self) -> Point<f64, Logical> {

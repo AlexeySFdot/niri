@@ -4113,21 +4113,12 @@ impl Niri {
 
         // Get layer-shell elements.
         let layer_map = layer_map_for_output(output);
-        let wallpaper_in_backdrop = self.should_place_wallpaper_in_backdrop(&layer_map);
 
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
         macro_rules! push_popups_from_layer {
             ($layer:expr, $backdrop:expr, $push:expr) => {{
-                self.render_layer_popups(
-                    renderer,
-                    target,
-                    &layer_map,
-                    $layer,
-                    $backdrop,
-                    wallpaper_in_backdrop,
-                    $push,
-                );
+                self.render_layer_popups(renderer, target, &layer_map, $layer, $backdrop, $push);
             }};
             ($layer:expr, true) => {{
                 push_popups_from_layer!($layer, true, &mut |elem| push(elem.into()));
@@ -4141,15 +4132,7 @@ impl Niri {
         }
         macro_rules! push_normal_from_layer {
             ($layer:expr, $backdrop:expr, $push:expr) => {{
-                self.render_layer_normal(
-                    renderer,
-                    target,
-                    &layer_map,
-                    $layer,
-                    $backdrop,
-                    wallpaper_in_backdrop,
-                    $push,
-                );
+                self.render_layer_normal(renderer, target, &layer_map, $layer, $backdrop, $push);
             }};
             ($layer:expr, true) => {{
                 push_normal_from_layer!($layer, true, &mut |elem| push(elem.into()));
@@ -4241,16 +4224,12 @@ impl Niri {
         layer_map: &'a LayerMap,
         layer: Layer,
         for_backdrop: bool,
-        wallpaper_in_backdrop: bool,
     ) -> impl Iterator<Item = (&'a MappedLayer, Rectangle<i32, Logical>)> {
         // LayerMap returns layers in reverse stacking order.
         layer_map.layers_on(layer).rev().filter_map(move |surface| {
             let mapped = self.mapped_layer_surfaces.get(surface)?;
 
-            let place_within_backdrop = mapped.place_within_backdrop()
-                || (wallpaper_in_backdrop && mapped.is_backdrop_wallpaper_candidate());
-
-            if for_backdrop != place_within_backdrop {
+            if for_backdrop != mapped.place_within_backdrop() {
                 return None;
             }
 
@@ -4266,15 +4245,9 @@ impl Niri {
         layer_map: &LayerMap,
         layer: Layer,
         for_backdrop: bool,
-        wallpaper_in_backdrop: bool,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
-        for (mapped, geo) in self.layers_in_render_order(
-            layer_map,
-            layer,
-            for_backdrop,
-            wallpaper_in_backdrop,
-        ) {
+        for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
             mapped.render_normal(renderer, geo.loc.to_f64(), target, push);
         }
     }
@@ -4286,25 +4259,11 @@ impl Niri {
         layer_map: &LayerMap,
         layer: Layer,
         for_backdrop: bool,
-        wallpaper_in_backdrop: bool,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
-        for (mapped, geo) in self.layers_in_render_order(
-            layer_map,
-            layer,
-            for_backdrop,
-            wallpaper_in_backdrop,
-        ) {
+        for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
             mapped.render_popups(renderer, geo.loc.to_f64(), target, push);
         }
-    }
-
-    fn should_place_wallpaper_in_backdrop(&self, layer_map: &LayerMap) -> bool {
-        layer_map.layers_on(Layer::Background).any(|surface| {
-            self.mapped_layer_surfaces
-                .get(surface)
-                .is_some_and(MappedLayer::is_backdrop_wallpaper_candidate)
-        })
     }
 
     fn redraw(&mut self, backend: &mut Backend, output: &Output) {
