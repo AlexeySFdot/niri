@@ -9,6 +9,7 @@ use niri_config::{
 use niri_ipc::{ColumnDisplay, PositionChange, SizeChange, WindowLayout};
 use smithay::backend::renderer::element::Kind;
 use smithay::backend::renderer::gles::GlesRenderer;
+use smithay::backend::renderer::Color32F;
 use smithay::desktop::{layer_map_for_output, Window};
 use smithay::output::Output;
 use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel;
@@ -1675,6 +1676,11 @@ impl<W: LayoutElement> Workspace<W> {
             1.,
             Kind::Unspecified,
         )
+    }
+
+    pub fn render_background_with_color(&self, color: Color32F) -> SolidColorRenderElement {
+        self.background_buffer
+            .render_with_color(Point::new(0., 0.), color, Kind::Unspecified)
     }
 
     pub fn render_above_top_layer(&self) -> bool {
