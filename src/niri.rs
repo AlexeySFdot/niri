@@ -4123,7 +4123,7 @@ impl Niri {
             .into()
         });
 
-        let render_overview_background = |ws: &_| {
+        let render_overview_background = |ws: &Workspace<Mapped>| {
             if let Some(fallback) = overview_background_fallback {
                 let elem = ws.render_background();
                 let components = elem.color().components();

@@ -3,7 +3,7 @@ use niri_config::{Config, LayerRule};
 use smithay::backend::renderer::element::surface::WaylandSurfaceRenderElement;
 use smithay::backend::renderer::element::Kind;
 use smithay::desktop::{LayerSurface, PopupManager};
-use smithay::utils::{Logical, Point, Scale, Size};
+use smithay::utils::{Logical, Point, Rectangle, Scale, Size};
 use smithay::wayland::shell::wlr_layer::{ExclusiveZone, Layer};
 
 use super::ResolvedLayerRules;
