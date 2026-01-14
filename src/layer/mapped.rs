@@ -141,12 +141,20 @@ impl MappedLayer {
         true
     }
 
-    pub fn place_within_backdrop(&self) -> bool {
-        if !self.rules.place_within_backdrop {
+    pub fn is_fullscreen_background(&self, geo: Rectangle<i32, Logical>) -> bool {
+        if self.surface.layer() != Layer::Background {
             return false;
         }
 
-        self.is_backdrop_wallpaper_candidate()
+        let state = self.surface.cached_state();
+        if state.exclusive_zone != ExclusiveZone::DontCare {
+            return false;
+        }
+
+        let view_size = self.view_size.to_i32_round();
+        geo.loc == Point::from((0, 0))
+            && geo.size.w >= view_size.w
+            && geo.size.h >= view_size.h
     }
 
     pub fn bob_offset(&self) -> Point<f64, Logical> {
