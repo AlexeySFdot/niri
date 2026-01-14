@@ -76,6 +76,16 @@ impl SolidColorBuffer {
     pub fn size(&self) -> Size<f64, Logical> {
         self.size
     }
+
+    pub fn render_with_color(
+        &self,
+        location: impl Into<Point<f64, Logical>>,
+        color: impl Into<Color32F>,
+        kind: Kind,
+    ) -> SolidColorRenderElement {
+        let geo = Rectangle::new(location.into(), self.size);
+        SolidColorRenderElement::new(self.id.clone(), geo, self.commit, color.into(), kind)
+    }
 }
 
 impl SolidColorRenderElement {
