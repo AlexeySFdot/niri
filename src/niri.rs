@@ -4092,7 +4092,10 @@ impl Niri {
                 output_scale,
             );
             if backdrop.is_some() {
-                skip_fullscreen_background = true;
+                let has_workspace_background = mon
+                    .workspaces_with_render_geo()
+                    .any(|(ws, _)| ws.render_background().color().components()[3] > 0.);
+                skip_fullscreen_background = has_workspace_background;
             }
             backdrop.map(OutputRenderElements::from)
         } else {
