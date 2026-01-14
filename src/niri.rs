@@ -4084,7 +4084,19 @@ impl Niri {
         let layer_map = layer_map_for_output(output);
 
         let mut skip_fullscreen_background = false;
-        let mut overview_background_fallback = None;
+        let has_fullscreen_background = zoom < 1.0
+            && self
+                .layers_in_render_order(&layer_map, Layer::Background, false)
+                .any(|(mapped, geo)| mapped.is_fullscreen_background(geo))
+            || zoom < 1.0
+                && self
+                    .layers_in_render_order(&layer_map, Layer::Background, true)
+                    .any(|(mapped, geo)| mapped.is_fullscreen_background(geo));
+        let mut overview_background_fallback = if has_fullscreen_background {
+            Some(Color32F::from(DEFAULT_BACKGROUND_COLOR))
+        } else {
+            None
+        };
         let backdrop = if zoom < 1.0 {
             let backdrop = self.render_backdrop_image(
                 renderer,
@@ -4095,7 +4107,6 @@ impl Niri {
             );
             if backdrop.is_some() {
                 skip_fullscreen_background = true;
-                overview_background_fallback = Some(Color32F::from(DEFAULT_BACKGROUND_COLOR));
             }
             backdrop.map(OutputRenderElements::from)
         } else {
