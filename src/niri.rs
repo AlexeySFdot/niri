@@ -4213,12 +4213,9 @@ impl Niri {
 
             if overview_active {
                 for (ws, geo) in mon.workspaces_with_render_geo() {
-                    if let Some(elem) = scale_relocate_crop(
-                        ws.render_background_with_alpha(OVERVIEW_WORKSPACE_ALPHA),
-                        output_scale,
-                        zoom,
-                        geo,
-                    ) {
+                    if let Some(elem) =
+                        scale_relocate_crop(ws.render_background(), output_scale, zoom, geo)
+                    {
                         push(elem.into());
                     }
                 }
@@ -4285,7 +4282,7 @@ impl Niri {
                 }
 
                 if overview_active {
-                    process!(geo)(ws.render_background_with_alpha(OVERVIEW_WORKSPACE_ALPHA));
+                    process!(geo)(ws.render_background());
                 } else if !has_background_image {
                     process!(geo)(ws.render_background());
                 }
