@@ -184,7 +184,6 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
 const MAX_OVERVIEW_BLUR_PASSES: u32 = 8;
-const OVERVIEW_WORKSPACE_ALPHA: f32 = 0.95;
 
 // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
 // second, so with the worst timing the maximum interval between two frame callbacks for a surface
@@ -4213,9 +4212,12 @@ impl Niri {
 
             if overview_active {
                 for (ws, geo) in mon.workspaces_with_render_geo() {
-                    if let Some(elem) =
-                        scale_relocate_crop(ws.render_background(), output_scale, zoom, geo)
-                    {
+                    if let Some(elem) = scale_relocate_crop(
+                        ws.render_background_opaque(),
+                        output_scale,
+                        zoom,
+                        geo,
+                    ) {
                         push(elem.into());
                     }
                 }
@@ -4282,7 +4284,7 @@ impl Niri {
                 }
 
                 if overview_active {
-                    process!(geo)(ws.render_background());
+                    process!(geo)(ws.render_background_opaque());
                 } else if !has_background_image {
                     process!(geo)(ws.render_background());
                 }
