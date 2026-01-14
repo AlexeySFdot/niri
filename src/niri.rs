@@ -4222,10 +4222,8 @@ impl Niri {
                         push(elem.into());
                     }
                 }
-            } else if !has_background_image {
-                if let Some((ws, _)) = mon.workspaces_with_render_geo().next() {
-                    push(ws.render_background().into());
-                }
+            } else if let Some((ws, _)) = mon.workspaces_with_render_geo().next() {
+                push(ws.render_background().into());
             }
         } else {
             push_popups_from_layer!(Layer::Top);
@@ -4286,7 +4284,7 @@ impl Niri {
 
                 if overview_active {
                     process!(geo)(ws.render_background_with_alpha(OVERVIEW_WORKSPACE_ALPHA));
-                } else if !has_background_image {
+                } else {
                     process!(geo)(ws.render_background());
                 }
             }
