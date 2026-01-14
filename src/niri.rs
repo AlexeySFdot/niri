@@ -184,7 +184,6 @@ use crate::window::{InitialConfigureState, Mapped, ResolvedWindowRules, Unmapped
 
 const CLEAR_COLOR_LOCKED: [f32; 4] = [0.3, 0.1, 0.1, 1.];
 const MAX_OVERVIEW_BLUR_PASSES: u32 = 8;
-const OVERVIEW_WORKSPACE_ALPHA: f32 = 0.95;
 
 // We'll try to send frame callbacks at least once a second. We'll make a timer that fires once a
 // second, so with the worst timing the maximum interval between two frame callbacks for a surface
@@ -4191,11 +4190,12 @@ impl Niri {
             push_popups_from_layer!(Layer::Bottom);
             push_popups_from_layer!(Layer::Background);
             push_normal_from_layer!(Layer::Bottom);
-            if !overview_blur_active {
+            let defer_overview_background = overview_active && has_background_image;
+            if !overview_blur_active && !defer_overview_background {
                 push_normal_from_layer!(Layer::Background);
             }
 
-            if overview_blur_active {
+            if overview_blur_active && !defer_overview_background {
                 if let Some(blurred) = self.render_overview_blur(
                     renderer,
                     output,
@@ -4214,7 +4214,7 @@ impl Niri {
             if overview_active {
                 for (ws, geo) in mon.workspaces_with_render_geo() {
                     if let Some(elem) = scale_relocate_crop(
-                        ws.render_background_with_alpha(OVERVIEW_WORKSPACE_ALPHA),
+                        ws.render_background_opaque(),
                         output_scale,
                         zoom,
                         geo,
@@ -4225,6 +4225,26 @@ impl Niri {
             } else if !has_background_image {
                 if let Some((ws, _)) = mon.workspaces_with_render_geo().next() {
                     push(ws.render_background().into());
+                }
+            }
+
+            if defer_overview_background {
+                if overview_blur_active {
+                    if let Some(blurred) = self.render_overview_blur(
+                        renderer,
+                        output,
+                        target,
+                        &layer_map,
+                        output_scale,
+                        overview_blur_strength,
+                        overview_blur_passes,
+                    ) {
+                        push(blurred.into());
+                    } else {
+                        push_normal_from_layer!(Layer::Background);
+                    }
+                } else {
+                    push_normal_from_layer!(Layer::Background);
                 }
             }
         } else {
@@ -4259,6 +4279,13 @@ impl Niri {
             let mut overview_background_pushed = false;
             for (ws, geo) in mon.workspaces_with_render_geo() {
                 push_normal_from_layer!(Layer::Bottom, process!(geo));
+
+                if overview_active {
+                    process!(geo)(ws.render_background_opaque());
+                } else if !has_background_image {
+                    process!(geo)(ws.render_background());
+                }
+
                 if overview_active && has_background_image {
                     if !overview_background_pushed {
                         if overview_blur_active {
@@ -4282,12 +4309,6 @@ impl Niri {
                     }
                 } else {
                     push_normal_from_layer!(Layer::Background, process!(geo));
-                }
-
-                if overview_active {
-                    process!(geo)(ws.render_background_with_alpha(OVERVIEW_WORKSPACE_ALPHA));
-                } else if !has_background_image {
-                    process!(geo)(ws.render_background());
                 }
             }
         }
