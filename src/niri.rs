@@ -149,8 +149,9 @@ use crate::protocols::output_management::OutputManagementManagerState;
 use crate::protocols::screencopy::{Screencopy, ScreencopyBuffer, ScreencopyManagerState};
 use crate::protocols::virtual_pointer::VirtualPointerManagerState;
 use crate::render_helpers::debug::draw_opaque_regions;
+use crate::render_helpers::offscreen::{OffscreenBuffer, OffscreenRenderElement};
 use crate::render_helpers::primary_gpu_texture::PrimaryGpuTextureRenderElement;
-use crate::render_helpers::renderer::NiriRenderer;
+use crate::render_helpers::renderer::{AsGlesRenderer, NiriRenderer};
 use crate::render_helpers::solid_color::{SolidColorBuffer, SolidColorRenderElement};
 use crate::render_helpers::surface::push_elements_from_surface_tree;
 use crate::render_helpers::texture::TextureBuffer;
@@ -471,6 +472,7 @@ pub struct OutputState {
     /// Solid color buffer for the backdrop that we use instead of clearing to avoid damage
     /// tracking issues and make screenshots easier.
     pub backdrop_buffer: SolidColorBuffer,
+    pub backdrop_image: Option<OffscreenBuffer>,
     pub lock_render_state: LockRenderState,
     pub lock_surface: Option<LockSurface>,
     pub lock_color_buffer: SolidColorBuffer,
@@ -2764,6 +2766,7 @@ impl Niri {
             vblank_throttle: VBlankThrottle::new(self.event_loop.clone(), name.connector.clone()),
             frame_callback_sequence: 0,
             backdrop_buffer: SolidColorBuffer::new(size, backdrop_color),
+            backdrop_image: None,
             lock_render_state,
             lock_surface: None,
             lock_color_buffer: SolidColorBuffer::new(size, CLEAR_COLOR_LOCKED),
@@ -2875,6 +2878,7 @@ impl Niri {
 
         if let Some(state) = self.output_state.get_mut(output) {
             state.backdrop_buffer.resize(output_size);
+            state.backdrop_image = None;
 
             state.lock_color_buffer.resize(output_size);
             if let Some(lock_surface) = &state.lock_surface {
@@ -4071,15 +4075,42 @@ impl Niri {
             return;
         }
 
-        // Prepare the background elements.
-        let state = self.output_state.get(output).unwrap();
-        let backdrop = SolidColorRenderElement::from_buffer(
-            &state.backdrop_buffer,
-            (0., 0.),
-            1.,
-            Kind::Unspecified,
-        )
-        .into();
+        // Get monitor elements.
+        let mon = self.layout.monitor_for_output(output).unwrap();
+        let zoom = mon.overview_zoom();
+
+        // Get layer-shell elements.
+        let layer_map = layer_map_for_output(output);
+
+        let mut skip_fullscreen_background = false;
+        let backdrop = if zoom < 1.0 {
+            let backdrop = self.render_backdrop_image(
+                renderer,
+                output,
+                target,
+                &layer_map,
+                output_scale,
+            );
+            if backdrop.is_some() {
+                let has_workspace_background = mon
+                    .workspaces_with_render_geo()
+                    .any(|(ws, _)| ws.render_background().color().components()[3] > 0.);
+                skip_fullscreen_background = has_workspace_background;
+            }
+            backdrop.map(OutputRenderElements::from)
+        } else {
+            None
+        }
+        .unwrap_or_else(|| {
+            let state = self.output_state.get(output).unwrap();
+            SolidColorRenderElement::from_buffer(
+                &state.backdrop_buffer,
+                (0., 0.),
+                1.,
+                Kind::Unspecified,
+            )
+            .into()
+        });
 
         // If the screenshot UI is open, draw it.
         if self.screenshot_ui.is_open() {
@@ -4107,41 +4138,56 @@ impl Niri {
         // workspaces, since the interactively-moved window already has a focus ring.
         let focus_ring = !self.layout.interactive_move_is_moving_above_output(output);
 
-        // Get monitor elements.
-        let mon = self.layout.monitor_for_output(output).unwrap();
-        let zoom = mon.overview_zoom();
-
-        // Get layer-shell elements.
-        let layer_map = layer_map_for_output(output);
-
         // We use macros instead of closures to avoid borrowing issues (renderer and push() go
         // into different functions).
         macro_rules! push_popups_from_layer {
-            ($layer:expr, $backdrop:expr, $push:expr) => {{
-                self.render_layer_popups(renderer, target, &layer_map, $layer, $backdrop, $push);
+            ($layer:expr, $backdrop:expr, $skip:expr, $push:expr) => {{
+                self.render_layer_popups(
+                    renderer,
+                    target,
+                    &layer_map,
+                    $layer,
+                    $backdrop,
+                    $skip,
+                    $push,
+                );
             }};
-            ($layer:expr, true) => {{
-                push_popups_from_layer!($layer, true, &mut |elem| push(elem.into()));
+            ($layer:expr, true, $skip:expr) => {{
+                push_popups_from_layer!($layer, true, $skip, &mut |elem| push(elem.into()));
             }};
-            ($layer:expr, $push:expr) => {{
-                push_popups_from_layer!($layer, false, $push);
+            ($layer:expr, $skip:expr, $push:expr) => {{
+                push_popups_from_layer!($layer, false, $skip, $push);
+            }};
+            ($layer:expr, $skip:expr) => {{
+                push_popups_from_layer!($layer, false, $skip, &mut |elem| push(elem.into()));
             }};
             ($layer:expr) => {{
-                push_popups_from_layer!($layer, false, &mut |elem| push(elem.into()));
+                push_popups_from_layer!($layer, false, false, &mut |elem| push(elem.into()));
             }};
         }
         macro_rules! push_normal_from_layer {
-            ($layer:expr, $backdrop:expr, $push:expr) => {{
-                self.render_layer_normal(renderer, target, &layer_map, $layer, $backdrop, $push);
+            ($layer:expr, $backdrop:expr, $skip:expr, $push:expr) => {{
+                self.render_layer_normal(
+                    renderer,
+                    target,
+                    &layer_map,
+                    $layer,
+                    $backdrop,
+                    $skip,
+                    $push,
+                );
             }};
-            ($layer:expr, true) => {{
-                push_normal_from_layer!($layer, true, &mut |elem| push(elem.into()));
+            ($layer:expr, true, $skip:expr) => {{
+                push_normal_from_layer!($layer, true, $skip, &mut |elem| push(elem.into()));
             }};
-            ($layer:expr, $push:expr) => {{
-                push_normal_from_layer!($layer, false, $push);
+            ($layer:expr, $skip:expr, $push:expr) => {{
+                push_normal_from_layer!($layer, false, $skip, $push);
+            }};
+            ($layer:expr, $skip:expr) => {{
+                push_normal_from_layer!($layer, false, $skip, &mut |elem| push(elem.into()));
             }};
             ($layer:expr) => {{
-                push_normal_from_layer!($layer, false, &mut |elem| push(elem.into()));
+                push_normal_from_layer!($layer, false, false, &mut |elem| push(elem.into()));
             }};
         }
 
@@ -4165,9 +4211,9 @@ impl Niri {
             push_normal_from_layer!(Layer::Top);
 
             push_popups_from_layer!(Layer::Bottom);
-            push_popups_from_layer!(Layer::Background);
+            push_popups_from_layer!(Layer::Background, skip_fullscreen_background);
             push_normal_from_layer!(Layer::Bottom);
-            push_normal_from_layer!(Layer::Background);
+            push_normal_from_layer!(Layer::Background, skip_fullscreen_background);
 
             // We don't expect more than one workspace when render_above_top_layer().
             if let Some((ws, _geo)) = mon.workspaces_with_render_geo().next() {
@@ -4196,15 +4242,23 @@ impl Niri {
             }
 
             for (_ws, geo) in mon.workspaces_with_render_geo() {
-                push_popups_from_layer!(Layer::Bottom, process!(geo));
-                push_popups_from_layer!(Layer::Background, process!(geo));
+                push_popups_from_layer!(Layer::Bottom, false, process!(geo));
+                push_popups_from_layer!(
+                    Layer::Background,
+                    skip_fullscreen_background,
+                    process!(geo)
+                );
             }
 
             mon.render_workspaces(renderer, target, focus_ring, &mut |elem| push(elem.into()));
 
             for (ws, geo) in mon.workspaces_with_render_geo() {
-                push_normal_from_layer!(Layer::Bottom, process!(geo));
-                push_normal_from_layer!(Layer::Background, process!(geo));
+                push_normal_from_layer!(Layer::Bottom, false, process!(geo));
+                push_normal_from_layer!(
+                    Layer::Background,
+                    skip_fullscreen_background,
+                    process!(geo)
+                );
 
                 process!(geo)(ws.render_background());
             }
@@ -4213,10 +4267,54 @@ impl Niri {
         mon.render_workspace_shadows(renderer, &mut |elem| push(elem.into()));
 
         // Then the backdrop.
-        push_popups_from_layer!(Layer::Background, true);
-        push_normal_from_layer!(Layer::Background, true);
+        push_popups_from_layer!(Layer::Background, true, false);
+        push_normal_from_layer!(Layer::Background, true, false);
 
         push(backdrop);
+    }
+
+    fn render_backdrop_image<R: NiriRenderer>(
+        &mut self,
+        renderer: &mut R,
+        output: &Output,
+        target: RenderTarget,
+        layer_map: &LayerMap,
+        output_scale: Scale<f64>,
+    ) -> Option<OffscreenRenderElement> {
+        let mut elements = Vec::<LayerSurfaceRenderElement<GlesRenderer>>::new();
+
+        for (mapped, geo) in self.layers_in_render_order(layer_map, Layer::Background, false) {
+            if !mapped.is_fullscreen_background(geo) {
+                continue;
+            }
+
+            mapped.render_popups(
+                renderer.as_gles_renderer(),
+                geo.loc.to_f64(),
+                target,
+                &mut |elem| elements.push(elem),
+            );
+            mapped.render_normal(
+                renderer.as_gles_renderer(),
+                geo.loc.to_f64(),
+                target,
+                &mut |elem| elements.push(elem),
+            );
+        }
+
+        if elements.is_empty() {
+            return None;
+        }
+
+        let state = self.output_state.get_mut(output)?;
+        let buffer = state.backdrop_image.get_or_insert_with(OffscreenBuffer::default);
+        match buffer.render(renderer.as_gles_renderer(), output_scale, &elements) {
+            Ok((elem, _sync, _data)) => Some(elem),
+            Err(err) => {
+                warn!("error rendering backdrop image: {err:?}");
+                None
+            }
+        }
     }
 
     fn layers_in_render_order<'a>(
@@ -4245,9 +4343,13 @@ impl Niri {
         layer_map: &LayerMap,
         layer: Layer,
         for_backdrop: bool,
+        skip_fullscreen_background: bool,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
         for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
+            if skip_fullscreen_background && mapped.is_fullscreen_background(geo) {
+                continue;
+            }
             mapped.render_normal(renderer, geo.loc.to_f64(), target, push);
         }
     }
@@ -4259,9 +4361,13 @@ impl Niri {
         layer_map: &LayerMap,
         layer: Layer,
         for_backdrop: bool,
+        skip_fullscreen_background: bool,
         push: &mut dyn FnMut(LayerSurfaceRenderElement<R>),
     ) {
         for (mapped, geo) in self.layers_in_render_order(layer_map, layer, for_backdrop) {
+            if skip_fullscreen_background && mapped.is_fullscreen_background(geo) {
+                continue;
+            }
             mapped.render_popups(renderer, geo.loc.to_f64(), target, push);
         }
     }
@@ -6119,6 +6225,7 @@ niri_render_elements! {
         ScreenshotUi = ScreenshotUiRenderElement,
         WindowMruUi = WindowMruUiRenderElement<R>,
         ExitConfirmDialog = ExitConfirmDialogRenderElement,
+        Offscreen = OffscreenRenderElement,
         Texture = PrimaryGpuTextureRenderElement,
         // Used for the CPU-rendered panels.
         RelocatedMemoryBuffer = RelocateRenderElement<MemoryRenderBufferRenderElement<R>>,
